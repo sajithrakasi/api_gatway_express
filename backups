@@ -1,0 +1,1329 @@
+import mysql from 'mysql2/promise';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const db = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USERNAME,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME
+});
+
+export default db;
+
+
+import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+import db from '../config/db.mjs';  // <-- imported here
+
+dotenv.config();
+
+export async function createAccessToken(req, res) {
+  const { api_key, secret_code } = req.body;
+//   console.log('Request body:', req.body); 
+ 
+
+  if (!api_key || !secret_code) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'API key and secret code are required.'
+    });
+  }
+
+  const [rows] = await db.query(
+   'SELECT * FROM firstoutcomes_token_api WHERE api_key = ? AND secret_code = ? AND delete_flag = 0',
+    [api_key, secret_code]
+  );
+//   console.log("Query result:", rows); 
+
+  if (rows.length === 0) {
+    return res.status(401).json({
+      status: 'error',
+      message: 'Invalid API key or secret code.'
+    });
+  }
+
+  const accessToken = jwt.sign({ clientId: rows[0].id }, process.env.JWT_SECRET, { expiresIn: process.env.TOKEN_EXPIRE });
+  const refreshToken = jwt.sign({ clientId: rows[0].id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+  await db.query(
+    'UPDATE firstoutcomes_token_api SET access_token = ?, refresh_token = ?, token_expired_at = NOW(), token_refreshed_at = NOW(), date_modified = NOW() WHERE id = ?',
+    [accessToken, refreshToken, rows[0].id]
+  );
+
+  return res.status(200).json({
+    status: 'success',
+    data: {
+      access_token: accessToken,
+      token_type: 'Bearer',
+      expires_in: parseInt(process.env.TOKEN_EXPIRE)
+    }
+  });
+}
+
+export async function refreshAccessToken(req, res) {
+  const { refresh_token } = req.body;
+
+  if (!refresh_token) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Refresh token is required.'
+    });
+  }
+
+  try {
+    const decoded = jwt.verify(refresh_token, process.env.JWT_SECRET);
+
+    const [rows] = await db.query(
+      'SELECT * FROM firstoutcomes_token_api WHERE id = ? AND delete_flag = 0',
+      [decoded.clientId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(401).json({ status: 'error', message: 'Invalid or expired refresh token.' });
+    }
+
+    const newAccessToken = jwt.sign({ clientId: rows[0].id }, process.env.JWT_SECRET, { expiresIn: process.env.TOKEN_EXPIRE });
+
+    await db.query(
+      'UPDATE firstoutcomes_token_api SET access_token = ?, token_refreshed_at = NOW(), date_modified = NOW() WHERE id = ?',
+      [newAccessToken, decoded.clientId]
+    );
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        access_token: newAccessToken,
+        expires_in: parseInt(process.env.TOKEN_EXPIRE)
+      }
+    });
+
+  } catch (err) {
+    return res.status(401).json({ status: 'error', message: 'Invalid or expired refresh token.' });
+  }
+}
+
+export async function createAccessToken(req, res) {
+    const { api_key } = req.body;
+  
+    // console.log("req.body",req.body)
+
+    if (!api_key) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'API key are required.'
+      });
+    }
+  
+    const rows = await db('firstoutcomes_token_api')
+      .where({ api_key, delete_flag: 0 });
+  
+    if (rows.length === 0) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Invalid API key or secret code.'
+      });
+    }
+  
+    const accessToken = jwt.sign({ clientId: rows[0].id }, process.env.JWT_SECRET, {
+      expiresIn: process.env.TOKEN_EXPIRE
+    });
+  
+    const refreshToken = jwt.sign({ clientId: rows[0].id }, process.env.JWT_SECRET, {
+      expiresIn: '7d'
+    });
+  
+    await db('firstoutcomes_token_api')
+      .where({ id: rows[0].id })
+      .update({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        token_expired_at: db.fn.now(),
+        token_refreshed_at: db.fn.now(),
+        date_modified: db.fn.now()
+      });
+  
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        access_token: accessToken,
+        token_type: 'Bearer',
+        expires_in: parseInt(process.env.TOKEN_EXPIRE)
+      }
+    });
+  }
+
+  //used knex db
+  import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+import db from '../config/db.mjs';  // <-- imported here
+
+dotenv.config();
+
+export async function createAccessToken(req, res) {
+    try {
+      const { api_key } = req.body;
+  
+      if (!api_key) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'API key are required.'
+        });
+      }
+  
+      const rows = await db('firstoutcomes_token_api')
+        .where({ api_key, delete_flag: 0 });
+  
+      if (rows.length === 0) {
+        return res.status(401).json({
+          status: 'error',
+          message: 'Invalid API key or secret code.'
+        });
+      }
+  
+      const accessToken = jwt.sign({ clientId: rows[0].client_id }, process.env.JWT_SECRET, {
+        expiresIn: process.env.TOKEN_EXPIRE
+      });
+  
+      const refreshToken = jwt.sign({ clientId: rows[0].client_id }, process.env.JWT_SECRET, {
+        expiresIn: '7d'
+      });
+  
+      await db('firstoutcomes_token_api')
+        .where({ id: rows[0].id })
+        .update({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          token_expired_at: db.fn.now(),
+          token_refreshed_at: db.fn.now(),
+          date_modified: db.fn.now()
+        });
+  
+      console.log("Access token generated successfully");
+  
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          access_token: accessToken,
+          token_type: 'Bearer',
+          expires_in: parseInt(process.env.TOKEN_EXPIRE)
+        }
+      });
+  
+    } catch (err) {
+      console.error("Error in createAccessToken:", err);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Internal Server Error'
+      });
+    }
+  }
+  
+  
+
+  export async function refreshAccessToken(req, res) {
+    const { refresh_token } = req.body;
+  
+    if (!refresh_token) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Refresh token is required.'
+      });
+    }
+  
+    try {
+      const decoded = jwt.verify(refresh_token, process.env.JWT_SECRET);
+      console.log("decoded",decoded)
+
+      const rows = await db('firstoutcomes_token_api')
+        .where({ id: decoded.clientId, delete_flag: 0 });
+  
+      if (rows.length === 0) {
+        return res.status(401).json({
+          status: 'error',
+          message: 'Invalid or expired refresh token.'
+        });
+      }
+  
+      const newAccessToken = jwt.sign({ clientId: rows[0].client_id },process.env.JWT_SECRET,{ expiresIn: process.env.TOKEN_EXPIRE }
+      );
+  
+      await db('firstoutcomes_token_api')
+        .where({ id: decoded.clientId })
+        .update({
+          access_token: newAccessToken,
+          token_refreshed_at: db.fn.now(),
+          date_modified: db.fn.now()
+        });
+  
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          access_token: newAccessToken,
+          expires_in: parseInt(process.env.TOKEN_EXPIRE)
+        }
+      });
+  
+    } catch (err) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Invalid or expired refresh token.'
+      });
+    }
+  }
+  
+
+  import jwt from 'jsonwebtoken';
+  import dotenv from 'dotenv';
+  import db from '../config/db.mjs';
+  
+  dotenv.config();
+  
+  export async function createAccessToken(req, res) {
+   try{
+      const { api_key, client_name, client_id } = req.body;
+  
+      if (!api_key) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'API key is required.'
+        });
+      }
+  
+      let rows = await db('firstoutcomes_tokens')
+        .where({ api_key, delete_flag: 'N' });
+  
+      // If API key not found, insert a new row
+      if (rows.length === 0) {
+        if (!client_name || !client_id) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'client_name and client_id are required to create a new token.'
+          });
+        }
+  
+        const [insertedId] = await db('firstoutcomes_token_api').insert({
+          api_key,
+          client_name,
+          client_id,
+          date_created: new Date(),
+          delete_flag: 'N'
+        });
+  
+        rows = await db('firstoutcomes_tokens')
+          .where({ id: insertedId });
+      }
+  
+      const accessToken = jwt.sign({ clientId: rows[0].client_id }, process.env.JWT_SECRET, {
+        expiresIn: process.env.TOKEN_EXPIRE
+      });
+  
+      const refreshToken = jwt.sign({ clientId: rows[0].client_id }, process.env.JWT_SECRET, {
+        expiresIn: process.env.REFRESH_TOKEN_EXPIRE
+      });
+  
+      const expiresInSec = parseInt(process.env.TOKEN_EXPIRE); 
+      const tokenExpiredAt = new Date(Date.now() + expiresInSec * 1000);
+  
+      await db('firstoutcomes_tokens')
+        .where({ id: rows[0].id })
+        .update({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          token_expired_at:tokenExpiredAt,
+          token_refreshed_at: new Date(),
+          date_modified:new Date(),
+        });
+  
+      console.log("Access token generated successfully");
+  
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          access_token: accessToken,
+          token_type: 'Bearer',
+          token_expired_at: parseInt(process.env.TOKEN_EXPIRE)
+        }
+      });
+  } catch (err) {
+      console.error("Error in createAccessToken:", err);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Internal Server Error'
+      });
+    }
+  }
+    
+    export async function refreshAccessToken(req, res) {
+      
+      const { refresh_token } = req.body;
+    
+      if (!refresh_token) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Refresh token is required.'
+        });
+      }
+    
+      try {
+        const decoded = jwt.verify(refresh_token, process.env.JWT_SECRET);
+      //   console.log("decoded",decoded)
+  
+        const rows = await db('firstoutcomes_tokens')
+          .where({ id: decoded.clientId, delete_flag: 'N' });
+    
+        if (rows.length === 0) {
+          return res.status(401).json({
+            status: 'error',
+            message: 'Invalid or expired refresh token.'
+          });
+        }
+    
+        const newAccessToken = jwt.sign({ clientId: rows[0].client_id },process.env.JWT_SECRET,{ expiresIn: process.env.TOKEN_EXPIRE });
+       
+        await db('firstoutcomes_tokens')
+          .where({ id: decoded.clientId })
+          .update({
+            access_token: newAccessToken,
+            token_refreshed_at: new Date(),
+            date_modified: new Date()
+          });
+    
+        return res.status(200).json({
+          status: 'success',
+          data: {
+            access_token: newAccessToken,
+            token_expired_at: parseInt(process.env.REFRESH_TOKEN_EXPIRE)
+          }
+        });
+        
+    
+      } catch (err) {
+        return res.status(401).json({
+          status: 'error',
+          message: 'Invalid or expired refresh token.'
+        });
+      }
+    }
+    
+  
+//patient- patient_id only
+
+import db from '../config/db.mjs';
+
+export async function getPatient(req, res) {
+  try {
+    const { patient_id } = req.query;
+
+    if (!patient_id) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'patient_id is required.'
+      });
+    }
+
+    const patient = await db('emr_patient')
+      .where({ patient_id, delete_flag: 'N' })
+      .first();
+
+    if (!patient) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Patient not found.'
+      });
+    }
+
+    return res.status(200).json({
+      status: 'success',
+      data: patient
+    });
+
+  } catch (error) {
+    console.error("Error in getPatient:", error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error'
+    });
+  }
+}
+
+
+//with emr search 
+
+import db from '../config/db.mjs';
+import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+function isValidDate(dateStr) {
+  const regex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/;
+  return regex.test(dateStr);
+}
+
+export async function getPatient(req, res) {
+  try {
+    const {
+      customer_id,
+      phone_number,
+      first_name,
+      last_name,
+      dob,
+      limit = 10,
+      offset = 0
+    } = req.query;
+
+    const accessToken = req.headers.authorization?.split(' ')[1];
+
+    // 1. Access Token Check
+    if (!accessToken) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Access token is required.'
+      });
+    }
+
+    try {
+      jwt.verify(accessToken, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Invalid or expired access token.'
+      });
+    }
+
+    // 2. Validate Mandatory Parameters
+    if (!customer_id || !phone_number) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Missing parameters: customer_id and phone_number are required.'
+      });
+    }
+
+    if (isNaN(customer_id)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid customer_id. It must be numeric.'
+      });
+    }
+
+    if (!/^\d+$/.test(phone_number)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid phone_number. It must contain only numbers.'
+      });
+    }
+
+    if (dob && !isValidDate(dob)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid date format for dob. Expected MM/DD/YYYY.'
+      });
+    }
+
+    // 3. Search Using customer_id and phone_number
+    let patientList = await db('patients')
+      .where({
+        customer_id: parseInt(customer_id),
+        phone_number,
+        delete_flag: 'N'
+      })
+      .limit(parseInt(limit))
+      .offset(parseInt(offset));
+
+    // 4. If not found, search using optional filters
+    if (patientList.length === 0 && (first_name || last_name || dob)) {
+      let altQuery = db('patients')
+        .where({ customer_id: parseInt(customer_id), delete_flag: 'N' });
+
+      if (first_name) altQuery.andWhere('first_name', 'like', `%${first_name}%`);
+      if (last_name) altQuery.andWhere('last_name', 'like', `%${last_name}%`);
+      if (dob) altQuery.andWhere('dob', dob);
+
+      patientList = await altQuery.limit(parseInt(limit)).offset(parseInt(offset));
+    }
+
+    // 5. If still not found, check EMR fallback
+    if (patientList.length === 0) {
+      let emrQuery = db('emr_patient')
+        .where({ customer_id: parseInt(customer_id), delete_flag: 'N' });
+
+      if (phone_number) emrQuery.andWhere('phone_number', phone_number);
+      if (first_name) emrQuery.andWhere('first_name', 'like', `%${first_name}%`);
+      if (last_name) emrQuery.andWhere('last_name', 'like', `%${last_name}%`);
+      if (dob) emrQuery.andWhere('dob', dob);
+
+      const emrPatientList = await emrQuery.limit(parseInt(limit)).offset(parseInt(offset));
+
+      if (emrPatientList.length > 0) {
+        return res.status(200).json({
+          status: 'success',
+          source: 'EMR',
+          data: emrPatientList
+        });
+      }
+
+      return res.status(404).json({
+        status: 'error',
+        message: 'No matching patient found in database or EMR.'
+      });
+    }
+
+    // 6. If match found in patients table
+    return res.status(200).json({
+      status: 'success',
+      source: 'patients',
+      data: patientList
+    });
+
+  } catch (error) {
+    console.error("Error in getPatient:", error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error'
+    });
+  }
+}
+
+
+import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+import db from '../config/db.mjs';
+
+dotenv.config();
+
+export async function createAccessToken(req, res) {
+    try {
+      const { api_key, client_name, client_id } = req.body;
+  
+      if (!api_key) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'API key is required.'
+        });
+      }
+  
+      let rows = await db('firstoutcomes_tokens').where({ api_key, delete_flag: 'N' });
+  
+      if (rows.length === 0) {
+        if (!client_name || !client_id) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'client_name and client_id are required to create a new token.'
+          });
+        }
+  
+        const [insertedId] = await db('firstoutcomes_token_api').insert({
+          api_key,
+          client_name,
+          client_id,
+          date_created: new Date(),
+          delete_flag: 'N'
+        });
+  
+        rows = await db('firstoutcomes_tokens').where({ id: insertedId });
+      } else {
+        const tokenExpiredAt = new Date(rows[0].token_expired_at);
+        const currentTime = new Date();
+  
+        if (tokenExpiredAt <= currentTime) {
+          // Token has expired — respond with refresh message
+          return res.status(401).json({
+            status: 'error',
+            message: 'Access token has expired. Please use the refresh token to get a new one.'
+          });
+        }
+      }
+  
+      // Token is still valid — return it
+      const accessToken = jwt.sign(
+        { clientId: rows[0].client_id },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.TOKEN_EXPIRE }
+      );
+  
+      const refreshToken = jwt.sign(
+        { clientId: rows[0].client_id },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.REFRESH_TOKEN_EXPIRE }
+      );
+  
+      const expiresInSec = parseInt(process.env.TOKEN_EXPIRE);
+      const tokenExpiredAt = new Date(Date.now() + expiresInSec * 1000);
+  
+      await db('firstoutcomes_tokens')
+        .where({ id: rows[0].id })
+        .update({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          token_expired_at: tokenExpiredAt,
+          token_refreshed_at: new Date(),
+          date_modified: new Date()
+        });
+  
+      console.log("Access token generated successfully");
+  
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          access_token: accessToken,
+          token_type: 'Bearer',
+          token_expired_at: expiresInSec
+        }
+      });
+  
+    } catch (err) {
+      console.error("Error in createAccessToken:", err);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Internal Server Error'
+      });
+    }
+  }
+  
+  
+export async function refreshAccessToken(req, res) {
+    const { refresh_token } = req.body;
+  
+    if (!refresh_token) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Refresh token is required.'
+      });
+    }
+  
+    try {
+      const decoded = jwt.verify(refresh_token, process.env.JWT_SECRET);
+  
+      // Fetch token record
+      const rows = await db('firstoutcomes_tokens')
+        .where({ client_id: decoded.clientId, delete_flag: 'N' });
+  
+      if (rows.length === 0) {
+        return res.status(401).json({
+          status: 'error',
+          message: 'Invalid or expired refresh token.'
+        });
+      }
+  
+      const tokenRecord = rows[0];
+      const currentTime = new Date();
+  
+      // Check if access_token is not expired yet
+      if (new Date(tokenRecord.token_expired_at) > currentTime) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Access token is still valid. No need to refresh yet.'
+        });
+      }
+  
+      // Create new access token
+      const newAccessToken = jwt.sign(
+        { clientId: tokenRecord.client_id },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.TOKEN_EXPIRE }
+      );
+  
+      const expiresInSec = parseInt(process.env.TOKEN_EXPIRE);
+      const tokenExpiredAt = new Date(Date.now() + expiresInSec * 1000);
+  
+      // Update DB
+      await db('firstoutcomes_tokens')
+        .where({ id: tokenRecord.id })
+        .update({
+          access_token: newAccessToken,
+          token_expired_at: tokenExpiredAt,
+          token_refreshed_at: new Date(),
+          date_modified: new Date()
+        });
+  
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          access_token: newAccessToken,
+          token_type: 'Bearer',
+          token_expired_at: process.env.REFRESH_TOKEN_EXPIRE
+        }
+      });
+  
+    } catch (err) {
+      console.error("Error in refreshAccessToken:", err);
+      return res.status(401).json({
+        status: 'error',
+        message: 'Invalid or expired refresh token.'
+      });
+    }
+  }
+  
+
+  import db from '../config/db.mjs';
+import jwt from 'jsonwebtoken';
+import moment from 'moment';
+
+export async function getPatient(req, res) {
+  try {
+    const {
+      patient_id,
+      phone,
+      first_name,
+      last_name,
+      dob,
+      limit = 10,
+      offset = 0
+    } = req.query;
+
+    const authHeader = req.headers.authorization;
+
+    // Validate access token
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Missing or invalid access token.' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    try {
+      jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ status: 'error', message: 'Invalid or expired access token.' });
+    }
+
+    // Validate required fields
+    if (!patient_id || !phone) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Missing parameters: patient_id and phone are required.'
+      });
+    }
+
+    if (isNaN(patient_id)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid Must be numeric.' });
+    }
+
+    if (!/^\d+$/.test(phone)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid phone. Must contain only numbers.' });
+    }
+
+    if (dob && !moment(dob, 'MM/DD/YYYY', true).isValid()) {
+      return res.status(400).json({ status: 'error', message: 'Invalid dob format. Use MM/DD/YYYY.' });
+    }
+
+    // Step 1: Search by patient_id + phone
+    let patients = await db('emr_patient')
+      .where({ patient_id, phone, delete_flag: 'N' })
+      .limit(limit)
+      .offset(offset);
+
+    // Step 2: Search by dob (if not found)
+    if (patients.length === 0 && dob) {
+      patients = await db('emr_patient')
+        .where({ patient_id, dob, delete_flag: 'N' })
+        .limit(limit)
+        .offset(offset);
+    }
+
+    // Step 3: Search by first_name (if not found)
+    if (patients.length === 0 && first_name) {
+      patients = await db('emr_patient')
+        .where('patient_id', patient_id)
+        .andWhere('first_name', 'ilike', `%${first_name}%`)
+        .andWhere('delete_flag', 'N')
+        .limit(limit)
+        .offset(offset);
+    }
+
+    // Step 4: Search by last_name (if not found)
+    if (patients.length === 0 && last_name) {
+      patients = await db('emr_patient')
+        .where('patient_id', patient_id)
+        .andWhere('last_name', 'ilike', `%${last_name}%`)
+        .andWhere('delete_flag', 'N')
+        .limit(limit)
+        .offset(offset);
+    }
+
+    if (patients.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'No matching patient found.'
+      });
+    }
+
+    return res.status(200).json({
+      status: 'success',
+      data: patients
+    });
+
+  } catch (error) {
+    console.error('Error in getPatient:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error.'
+    });
+  }
+}
+
+
+import db from '../config/db.mjs';
+import CryptographyPlugin from '../../../opt/Plugins/CryptoPlugin/cryptoPlugin.mjs'
+
+const Cryptography = new CryptographyPlugin();
+
+export async function getPatient(req, res) {
+  try {
+    const {
+      patient_id,
+      phone,
+      first_name,
+      last_name,
+      dob,
+      zip,
+      limit = 10,
+      offset = 0
+    } = req.query;
+
+    // const authHeader = req.headers.authorization;
+
+    // // Validate access token
+    // if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    //   return res.status(401).json({ status: 'error', message: 'Missing or invalid access token.' });
+    // }
+
+    // const token = authHeader.split(' ')[1];
+    // try {
+    //   jwt.verify(token, process.env.JWT_SECRET);
+    // } catch (err) {
+    //   return res.status(401).json({ status: 'error', message: 'Invalid or expired access token.' });
+    // }
+
+    // // Ensure at least one search parameter is present
+    // if (!patient_id && !phone && !dob && !first_name && !last_name && !zip) {
+    //   return res.status(400).json({
+    //     status: 'error',
+    //     message: 'At least one search parameter is required.'
+    //   });
+    // }
+
+    // Start building query
+    let query = db('emr_patient').where({ delete_flag: 'N' });
+
+    if (patient_id) {
+      query = query.andWhere('patient_id', patient_id);
+    }
+    if (phone) {
+      query = query.andWhere('phone', Cryptography.encode(phone));
+    }
+    if (dob) {
+      query = query.andWhere('dob',  Cryptography.encode(dob));
+    }
+
+    if (first_name) {
+      query = query.andWhere('first_name', Cryptography.encode(first_name.toUpperCase()));
+    }
+    if (last_name) {
+      query = query.andWhere('last_name', Cryptography.encode(last_name.toUpperCase()));
+    }
+    
+    if (zip) {
+      query = query.andWhere('zip',  Cryptography.encode(zip));
+    }
+
+    // Apply pagination
+    query = query.limit(Number(limit)).offset(Number(offset));
+
+    const patients = await query;
+
+    if (!patients || patients.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Patient not found.'
+      });
+    }
+ 
+   
+    const decryptedPsatients = patients.map((patient) => ({
+    
+        first_name: Cryptography.decode(patient.first_name) || '',
+        last_name:  Cryptography.decode(patient.last_name)|| '',
+        phone: Cryptography.decode(patient.phone) || '',
+        dob: Cryptography.decode(patient.dob) || '',
+        zip: Cryptography.decode(patient.zip) || '',
+        email: Cryptography.decode(patient.email)|| '',
+        mobile_phone:Cryptography.decode(patient.mobile_phone) || '',
+        full_name:  Cryptography.decode(patient.full_name) || '',
+        address1:  Cryptography.decode(patient.address1) || '',
+        city:  Cryptography.decode(patient.city) || '',
+        state:  Cryptography.decode(patient.state)|| '',
+       
+    }))
+  
+
+    return res.status(200).json({
+      status: 'success',
+      data: decryptedPsatients
+    });
+
+  } catch (error) {
+    console.error("Error in getPatient:", error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error'
+    });
+  }
+}
+
+//redis
+
+import db from '../config/db.mjs';
+import CryptographyPlugin from '../../../opt/Plugins/CryptoPlugin/cryptoPlugin.mjs';
+import { getValue } from '../redis.mjs'; // adjust the path as needed
+
+const Cryptography = new CryptographyPlugin();
+
+export async function getPatient(req, res) {
+  try {
+    const { phone, customer_id } = req.query;
+
+    if (!phone) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Phone number is required.',
+      });
+    }
+
+    let emr_practice_id = null;
+
+    if (customer_id) {
+      const redisData = await getValue('redisgroup', 'group1'); 
+      if (redisData) {
+        const matchedPractice = redisData.find(p => p.customer_id === parseInt(customer_id));
+        if (matchedPractice) {
+          emr_practice_id = matchedPractice.emr_practice_id;
+        }
+      }
+    }
+
+    // Build query
+    let query = db('emr_patient')
+      .where('delete_flag', 'N')
+      .andWhere('phone', Cryptography.encode(phone));
+
+    if (emr_practice_id) {
+      query = query.andWhere('emr_practice_id', emr_practice_id);
+    }
+
+    const patients = await query;
+
+    if (!patients || patients.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Patient not found.',
+      });
+    }
+
+    const decryptedPatients = patients.map(patient => ({
+      first_name: Cryptography.decode(patient.first_name),
+      last_name: Cryptography.decode(patient.last_name),
+      phone: Cryptography.decode(patient.phone),
+      dob: Cryptography.decode(patient.dob),
+      zip: Cryptography.decode(patient.zip),
+      email: Cryptography.decode(patient.email),
+      mobile_phone: Cryptography.decode(patient.mobile_phone),
+      full_name: Cryptography.decode(patient.full_name),
+      address1: Cryptography.decode(patient.address1),
+      city: Cryptography.decode(patient.city),
+      state: Cryptography.decode(patient.state),
+    }));
+
+    return res.status(200).json({
+      status: 'success',
+      data: decryptedPatients,
+    });
+
+  } catch (error) {
+    console.error('Error in getPatient:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error',
+    });
+  }
+}
+
+
+import db from '../config/db.mjs';
+import CryptographyPlugin from '../../../opt/Plugins/CryptoPlugin/cryptoPlugin.mjs';
+import { getValue } from '../redis.mjs';
+import dotenv from 'dotenv';
+dotenv.config();
+
+const Cryptography = new CryptographyPlugin();
+
+const redis_name = process.env.REDIS_NAME;
+const redis_key = process.env.REDIS_KEY;
+
+export async function getPatient(req, res) {
+  try {
+    const { phone, customer_id, dob, first_name, last_name, zip } = req.query;
+
+    if (!phone) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Phone number is required.',
+      });
+    }
+
+    let emr_practice_id = null;
+    let customer_name = null;
+    let emr_id = null;
+
+    // Get EMR Practice details from Redis if customer_id is provided
+    if (customer_id) {
+      const redisData = await getValue(redis_name, redis_key);
+      if (redisData) {
+        const matchedPractice = redisData.find(p => p.customer_id === parseInt(customer_id));
+        if (matchedPractice) {
+          emr_practice_id = matchedPractice.emr_practice_id;
+          customer_name = matchedPractice.customer_name;
+          emr_id = matchedPractice.emr_id;
+        }
+      }
+    }
+
+    // Query local database with encrypted phone
+    let query = db('emr_patient')
+      .where('delete_flag', 'N')
+      .andWhere('phone', Cryptography.encode(phone));
+
+    if (emr_practice_id) {
+      query = query.andWhere('emr_practice_id', emr_practice_id);
+    }
+
+    let patients = await query;
+
+    // If more than one match, refine using extra params
+    if (patients.length > 1) {
+      patients = patients.filter(p => {
+        return (
+          (Cryptography.encode(p.dob)) ||
+          (Cryptography.encode(p.first_name.toUpperCase())) ||
+          (Cryptography.encode(p.last_name.toUpperCase())) ||
+          (Cryptography.encode(p.zip))
+        );
+      });
+    }
+
+    // If still no patients found, try querying EMR database
+    // if (patients.length === 0) {
+    //   const externalQuery = await db('external_emr_patient')
+    //     .where('phone', Cryptography.encode(phone))
+    //     .andWhere('emr_practice_id', emr_practice_id);
+
+    //   if (externalQuery.length > 0) {
+    //     patients = externalQuery;
+    //   }
+    // }
+
+    // If no patients found
+    if (patients.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Patient not found.',
+      });
+    }
+
+    // Decrypt and format patient data
+    const decryptedPatients = patients.map(patient => ({
+      first_name: Cryptography.decode(patient.first_name),
+      last_name: Cryptography.decode(patient.last_name),
+      phone: Cryptography.decode(patient.phone),
+      dob: Cryptography.decode(patient.dob),
+      zip: Cryptography.decode(patient.zip),
+      email: Cryptography.decode(patient.email),
+      mobile_phone: Cryptography.decode(patient.mobile_phone),
+      full_name: Cryptography.decode(patient.full_name),
+      address1: Cryptography.decode(patient.address1),
+      city: Cryptography.decode(patient.city),
+      state: Cryptography.decode(patient.state),
+      emr_practice_id,
+      customer_name,
+      emr_id
+    }));
+
+    return res.status(200).json({
+      status: 'success',
+      data: decryptedPatients,
+    });
+
+  } catch (error) {
+    console.error('Error in getPatient:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error',
+    });
+  }
+}
+
+
+import db from '../config/db.mjs';
+import CryptographyPlugin from '../../../opt/Plugins/CryptoPlugin/cryptoPlugin.mjs';
+import dotenv from 'dotenv';
+import Redis from 'ioredis';
+dotenv.config();
+
+const Cryptography = new CryptographyPlugin();
+
+
+
+export async function getPatient(event) {
+  try {
+    console.log("started");
+  
+    const redis_name = process.env.REDIS_NAME;
+    const redis_key = process.env.REDIS_KEY;
+  
+    const { fileData } = event;
+  
+    if ( !fileData) {
+      return { error: 'Missing required fields in event data.' };
+    }
+  
+    const matchResult = await getValue(redis_name, redis_key, fileData);
+  
+    return matchResult;
+  } catch (error) {
+    console.error('Error:', error);
+    return { error: 'Failed', details: error.message };
+  }
+}
+
+export async function getValue(redisname, rediskey,fileData) {
+  try {
+    const client = new Redis({
+      host: '127.0.0.1',
+      port: 6379,
+      db: 0,
+    });
+
+    client.on('error', (err) => {
+      console.error('Redis error:', err);
+    });
+
+    const value = await client.get(redisname);
+    await client.quit();
+
+    if (!value) {
+      return { message: 'No data found in Redis.' };
+    }
+
+    const parsedData = JSON.parse(value);
+    const selectedGroup = parsedData[rediskey];
+
+    if (!Array.isArray(selectedGroup)) {
+      return { message: 'Invalid data structure for selected group.' };
+    }
+
+    const { customer_id, phone } = fileData;
+    const matchedItem = selectedGroup.find(custom =>
+      custom.customer_id === customer_id && custom.phone === phone
+    );
+
+    if (matchedItem) {
+      return {
+        message: 'Match found',
+        matchedItem
+      };
+    } else {
+      return {
+        message: 'No match found'
+      };
+    }
+
+  } catch (err) {
+    console.error('Error connecting to Redis:', err);
+    return { error: 'Redis error', details: err.message };
+  }
+}
+
+import db from '../config/db.mjs';
+import CryptographyPlugin from '../../opt/Plugins/CryptoPlugin/cryptoPlugin.mjs';
+
+const Cryptography = new CryptographyPlugin();
+
+export const getPatient = async (req, res) => {
+  try {
+    const { phone, customer_id, dob, first_name, last_name, zip } = req.query || {};
+
+    if (!phone || !customer_id || customer_id === '') {
+      return res.status(400).json({ message: 'Phone and customer_id are required.' });
+    }
+
+    const encodedPhone = Cryptography.encode(phone);
+    const encodedDob = dob ? Cryptography.encode(dob) : null;
+    const encodedFirstName = first_name ? Cryptography.encode(first_name.toUpperCase()) : null;
+    const encodedLastName = last_name ? Cryptography.encode(last_name.toUpperCase()) : null;
+    const encodedZip = zip ? Cryptography.encode(zip) : null;
+
+    let query = db('emr_patient')
+      .where('delete_flag', 'N')
+      .andWhere('phone', encodedPhone)
+      .andWhere('practice_id', customer_id);
+
+    let patients = await query;
+
+    // Step 1: filter by DOB
+    if (patients.length > 1 && dob) {
+      patients = patients.filter(p => p.dob === encodedDob);
+    }
+
+    // Step 2:  filter by First Name
+    if (patients.length > 1 && first_name) {
+      patients = patients.filter(p => p.first_name === encodedFirstName);
+    }
+
+    // Step 3:  filter by Last Name
+    if (patients.length > 1 && last_name) {
+      patients = patients.filter(p => p.last_name === encodedLastName);
+    }
+
+    // Step 4: filter by Zip
+    if (patients.length > 1 && zip) {
+      patients = patients.filter(p => p.zip === encodedZip);
+    }
+
+    if (!patients.length) {
+      return res.status(404).json({ message: 'Patient not found.' });
+    }
+
+    const encryptedFields = [
+      'first_name', 'last_name','middle_name', 'phone', 'dob','gender', 'zip', 'email', 'mobile_phone','marital_status',
+      'full_name', 'address1', 'address2', 'city', 'state',
+      'ssn', 'work_phone', 'home_phone','concent_to_text',
+      'guarantor_firstname', 'guarantor_lastname', 'guarantor_email','guarantor_phone', 'guarantor_ssn', 'guarantor_dob',
+      'guarantor_address1', 'guarantor_address2', 'guarantor_city', 'guarantor_state', 'guarantor_zip','guarantor_countrycode3166',
+      'guardian_firstname', 'guardian_lastname', 'guardian_phone_number', 'guardian_address1', 'guardian_address2',
+      'emergency_first_name', 'emergency_last_name', 'emergency_relationship',
+      'emergency_phone_number', 'emergency_mobile_number', 'emergency_home_number','language6392code',
+      'emergency_address1', 'emergency_address2', 'emergency_zip', 'emergency_city', 'emergency_state','consenttocall',
+    ];
+
+    const decryptedPatients = patients.map(patient => {
+      const decrypted = {};
+      for (const key in patient) {
+        if (encryptedFields.includes(key) && patient[key]) {
+          decrypted[key] = Cryptography.decode(patient[key]);
+        } else {
+          decrypted[key] = patient[key]; 
+        }
+      }
+      return decrypted;
+    });
+
+    return res.status(200).json({ patient: decryptedPatients });
+
+  } catch (error) {
+    console.error('Error getting patient:', error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+
+  app.post('/auth/refresh', async (req, res) => {})

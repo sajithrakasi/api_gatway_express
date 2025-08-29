@@ -1,0 +1,13 @@
+entryPoints:
+  web:
+    address: ":80"
+
+providers:
+  docker:
+    exposedByDefault: false
+  file:
+    directory:  - ./api-gateway/traefik:/etc/traefik 
+    watch: true
+
+api:
+  dashboard: true

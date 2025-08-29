@@ -1,0 +1,10 @@
+{
+  "fileData": {
+    "customer_id":"101100",
+    "phone":"9172384712",
+    "dob":"01/01/1990",
+    "first_name":"david",
+    "last_name":"testpatient",
+    "zip":"1234"
+  }
+}
